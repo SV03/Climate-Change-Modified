@@ -8,10 +8,14 @@ breed [rays ray]     ;; packets of sunlight
 breed [IRs IR]       ;; packets of infrared radiation
 breed [heats heat]   ;; packets of heat energy
 breed [CO2s CO2]     ;; packets of carbon dioxide
-
 breed [clouds cloud]
 clouds-own [cloud-speed cloud-id]
-
+;; -----------added code--------------------------
+breed [suns sun]
+breed [trees tree]
+breed [towns town]
+suns-own [sun-speed]
+;;-------------------------------------------------
 ;;
 ;; Setup Procedures
 ;;
@@ -23,8 +27,13 @@ to setup
   set-default-shape clouds "cloud"
   set-default-shape heats "dot"
   set-default-shape CO2s "CO2-molecule"
+  ;;--------Added Code---------------------
+  set-default-shape suns "sun"
+  set-default-shape trees "tree pine"
+  set-default-shape towns "house two story"
+  ;;----------------------------------------
   setup-world
-  set temperature 12
+  set temperature -10
   reset-ticks
 end
 
@@ -41,8 +50,18 @@ to setup-world
     if pycor < earth-top
       [ set pcolor red + 3 ] ;; earth
     if pycor = earth-top ;; earth surface
-      [ update-albedo ]
+      [ albedo-surface ];;update-albedo ]
   ]
+  ;;--------------Added Code---------------------
+    create-suns 1
+  [
+    set color yellow
+    set size 6
+    setxy (min-pxcor + 0.3) 20.5
+    set heading 90
+    set sun-speed 0.045
+  ]
+  ;;-----------------------------------------------
 end
 
 ;;
@@ -54,16 +73,30 @@ to go
   run-sunshine   ;; step sunshine
   ;; if the albedo slider has moved update the color of the "earth surface" patches
   ask patches with [pycor = earth-top]
-    [ update-albedo ]
+    [ albedo-surface ]
   run-heat  ;; step heat
   run-IR    ;; step IR
   run-CO2   ;; moves CO2 molecules
   tick
+  ;;-------------Added Code------------------------------------------
+  ask suns [
+    run-sun
+  ]
+    ask trees [
+    absorb-CO2s
+  ]
+  ask towns [
+    release-C02s
+  ]
+  ;;-------------------------------------------------------------------
 end
 
-to update-albedo ;; patch procedure
-  set pcolor scale-color green albedo 0 1
-end
+;to update-albedo ;; patch procedure
+ ; set pcolor scale-color green albedo 0 1
+;end
+
+;; the above code is no longer needed due to albedo-surface being used to have multiple types of surfaces please refer to the bottom of the code
+
 
 to add-cloud            ;; erase clouds and then create new ones, plus one
   let sky-height sky-top - earth-top
@@ -107,12 +140,13 @@ to remove-cloud       ;; erase clouds and then create new ones, minus one
   ]
 end
 
+
+
 to run-sunshine
   ask rays [
     if not can-move? 0.3 [ die ]  ;; kill them off at the edge
     fd 0.3                        ;; otherwise keep moving
   ]
-  create-sunshine  ;; start new sun rays from top
   reflect-rays-from-clouds  ;; check for reflection off clouds
   encounter-earth   ;; check for reflection off earth and absorption
 end
@@ -141,7 +175,7 @@ to encounter-earth
   ask rays with [ycor <= earth-top] [
     ;; depending on the albedo either
     ;; the earth absorbs the heat or reflects it
-    ifelse 100 * albedo > random 100
+    ifelse (100 * ((pcolor / 10) mod 1)) > random 100     ;; MODIFIED CODE old condition for the albedo level to be set 100 * albedo > random 100
       [ set heading 180 - heading  ] ;; reflect
       [ rt random 45 - random 45 ;; absorb into the earth
         set color red - 2 + random 4
@@ -151,7 +185,7 @@ end
 
 to run-heat    ;; advances the heat energy turtles
   ;; the temperature is related to the number of heat turtles
-  set temperature 0.99 * temperature + 0.01 * (12 + 0.1 * count heats)
+  set temperature 0.99 * temperature + 0.01 * (0.1 * count heats - 10) ;; MODIFIED CODE : the rate the temperature resets back to starting temperature in this case
   ask heats
   [
     let dist 0.5 * random-float 1
@@ -159,13 +193,13 @@ to run-heat    ;; advances the heat energy turtles
       [ fd dist ]
       [ set heading 180 - heading ] ;; if we're hitting the edge of the world, turn around
     if ycor >= earth-top [  ;; if heading back into sky
-      ifelse temperature > 20 + random 40
+      ifelse random 100 > 85
               ;; heats only seep out of the earth from a small area
               ;; this makes the model look nice but it also contributes
               ;; to the rate at which heat can be lost
-              and xcor > 0 and xcor < max-pxcor - 8
+              ;;and xcor > 0 and xcor < max-pxcor - 8
         [ set breed IRs                    ;; let some escape as IR
-          set heading 20
+          set heading (random 60 - 30)
           set color magenta ]
         [ set heading 100 + random 160 ] ;; return them to earth
     ]
@@ -216,15 +250,162 @@ to run-CO2
   ]
 end
 
+;------------------------- Added Code--------------------------------
+to run-sun
+      ifelse day-night? [
+    fd sun-speed * 50 / 50
+        ifelse (round ((ticks - max-pxcor / sun-speed) / (2 * max-pxcor / sun-speed)) mod 2) = 0 [
+        hide-turtle]
+        [show-turtle
+          radiate]
+      ]
+      [radiate]
+end
 
-; Copyright 2007 Uri Wilensky.
-; See Info tab for full copyright and license.
+
+to radiate
+   if 10 * sun-brightness > random 50 [
+     hatch-rays 1 [
+     set color yellow
+     set heading 150 + random 60
+     set size 1]
+   ]
+end
+
+to add-tree ;;
+    create-trees 5 [
+    set color green
+    set size 2
+       setxy random-xcor 1.4
+  ]
+end
+to remove-tree ;;
+  repeat 5 [
+    if any? trees [
+      ask one-of trees [ die ]
+    ]
+  ]
+end
+
+to absorb-CO2s
+  let prey one-of CO2s-here
+  if prey != nobody
+    [ ask prey [ die ]
+    ]
+end
+
+to add-town
+    create-towns 1 [
+    set color brown
+    set size 3
+       setxy random-xcor 1
+  ]
+end
+
+to remove-town ;;
+  repeat 1 [
+    if any? towns [
+      ask one-of towns [ die ]
+    ]
+  ]
+end
+
+
+to release-C02s
+  if random 100 > 95 [
+  hatch-CO2s 1 [
+    set size 1
+    set color green
+  ]
+  ]
+end
+
+to albedo-surface     ;; determine the albedo of the surface and the landtype of the surface
+
+;; determining the surface-area of each type.
+  let size1-min (min-pxcor * 0.01 * surface-area-1)
+  let size1-max (max-pxcor * 0.01 * surface-area-1)
+  let size2-min (size1-min + (min-pxcor - size1-min) * surface-area-2 * 0.01)
+  let size2-max (size1-max + (max-pxcor - size1-max) * surface-area-2 * 0.01)
+  let size3-min (size2-min + (min-pxcor - size2-min) * surface-area-3 * 0.01)
+  let size3-max (size2-max + (max-pxcor - size2-max) * surface-area-3 * 0.01)
+
+    if surface-type-4  = "ice/water" [   ;; Surface 4
+      ifelse melting-ice? [
+        set pcolor scale-color blue temperature 30 0 ]
+        [set pcolor scale-color blue surface-type-4-albedo 0 1 ]
+    ]
+    if surface-type-4  = "forest" [
+      set pcolor scale-color green surface-type-4-albedo 0 1 ]
+
+    if surface-type-4 = "concert" [
+      set pcolor scale-color gray surface-type-4-albedo 0 1 ]
+
+    if surface-type-4  = "sand" [
+      set pcolor scale-color yellow surface-type-4-albedo 0 1 ]
+
+
+
+  if pxcor >= size3-min and pxcor <= size3-max [ ;; Surface 3
+
+    if surface-type-3  = "ice/water" [
+      ifelse melting-ice? [
+        set pcolor scale-color blue temperature 30 0 ]
+        [set pcolor scale-color blue surface-type-3-albedo 0 1 ]
+    ]
+    if surface-type-3  = "forest" [
+      set pcolor scale-color green surface-type-3-albedo 0 1 ]
+
+    if surface-type-3  = "concert" [
+      set pcolor scale-color gray surface-type-3-albedo 0 1 ]
+
+    if surface-type-3  = "sand" [
+      set pcolor scale-color yellow surface-type-3-albedo 0 1 ]
+   ]
+
+
+  if pxcor >= size2-min and pxcor <= size2-max [ ;; Surface 2
+
+    if surface-type-2 = "ice/water" [
+      ifelse melting-ice? [
+        set pcolor scale-color blue temperature 30 0 ]
+        [set pcolor scale-color blue surface-type-2-albedo 0 1 ]
+    ]
+    if surface-type-2 = "forest" [
+      set pcolor scale-color green surface-type-2-albedo 0 1 ]
+
+    if surface-type-2 = "concert" [
+      set pcolor scale-color gray surface-type-2-albedo 0 1 ]
+
+    if surface-type-2 = "sand" [
+      set pcolor scale-color yellow surface-type-2-albedo 0 1 ]
+   ]
+
+
+
+  if pxcor >= size1-min and pxcor <= size1-max [ ;; Surface 1
+
+    if surface-type-1 = "ice/water" [
+      ifelse melting-ice? [
+        set pcolor scale-color blue temperature 30 0 ]
+        [set pcolor scale-color blue surface-type-1-albedo 0 1 ]
+    ]
+    if surface-type-1 = "forest" [
+      set pcolor scale-color green surface-type-1-albedo 0 1 ]
+
+    if surface-type-1 = "concert" [
+      set pcolor scale-color gray surface-type-1-albedo 0 1 ]
+
+    if surface-type-1 = "sand" [
+      set pcolor scale-color yellow surface-type-1-albedo 0 1 ]
+   ]
+end
 @#$#@#$#@
 GRAPHICS-WINDOW
-317
-12
-864
-362
+333
+14
+880
+364
 -1
 -1
 11.0
@@ -248,10 +429,10 @@ ticks
 30.0
 
 BUTTON
-6
-12
-101
+11
 45
+106
+78
 setup
 setup
 NIL
@@ -265,10 +446,10 @@ NIL
 1
 
 BUTTON
-103
-12
-198
+108
 45
+203
+78
 go
 go
 T
@@ -283,39 +464,24 @@ NIL
 
 SLIDER
 18
-47
+85
 191
-80
+118
 sun-brightness
 sun-brightness
 0
 5
-1.0
+4.2
 0.2
 1
 NIL
 HORIZONTAL
 
-SLIDER
-18
-82
-191
-115
-albedo
-albedo
-0
-1
-0.6
-0.05
-1
-NIL
-HORIZONTAL
-
 PLOT
-9
-212
-278
-423
+10
+395
+598
+792
 Global Temperature
 NIL
 NIL
@@ -324,16 +490,18 @@ NIL
 10.0
 20.0
 true
-false
+true
 "" ""
 PENS
-"default" 1.0 0 -2674135 true "" "plot temperature"
+"Temperature" 1.0 0 -2674135 true "" "plot temperature"
+"CO2s" 1.0 0 -7500403 true "" "plot count turtles with [color = green]"
+"Trees" 1.0 0 -955883 true "" "plot count trees"
 
 BUTTON
-7
-152
-102
-185
+10
+306
+105
+339
 add CO2
 add-CO2
 NIL
@@ -347,10 +515,10 @@ NIL
 0
 
 BUTTON
-104
-152
-199
-185
+107
+306
+202
+339
 remove CO2
 remove-CO2
 NIL
@@ -364,21 +532,21 @@ NIL
 0
 
 MONITOR
-210
-87
-303
-132
-NIL
+602
+398
+746
+443
+Current Temperature
 temperature
 1
 1
 11
 
 BUTTON
-7
-118
-102
-151
+10
+272
+105
+305
 add cloud
 add-cloud
 NIL
@@ -392,10 +560,10 @@ NIL
 0
 
 BUTTON
-104
-118
-199
-151
+107
+272
+202
+305
 remove cloud
 remove-cloud
 NIL
@@ -409,10 +577,10 @@ NIL
 0
 
 MONITOR
-210
-133
-303
-178
+216
+321
+309
+366
 CO2 amount
 count CO2s
 2
@@ -420,10 +588,10 @@ count CO2s
 11
 
 BUTTON
-208
-41
-309
-75
+206
+45
+307
+79
 watch a ray
 watch one-of rays\nask subject [ pen-down ]
 NIL
@@ -435,6 +603,274 @@ NIL
 NIL
 NIL
 0
+
+SWITCH
+194
+85
+318
+118
+day-night?
+day-night?
+0
+1
+-1000
+
+BUTTON
+11
+233
+103
+266
+add trees
+add-tree
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+106
+233
+203
+266
+remove trees
+remove-tree
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+MONITOR
+218
+229
+305
+274
+No.Of Trees
+count trees
+17
+1
+11
+
+BUTTON
+17
+191
+105
+224
+add town
+add-town
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+106
+191
+202
+224
+remove town
+remove-town
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+MONITOR
+217
+179
+310
+224
+No.Of Towns
+count towns
+17
+1
+11
+
+MONITOR
+217
+276
+313
+321
+No.Of Clouds
+count clouds
+17
+1
+11
+
+SLIDER
+616
+464
+816
+497
+surface-type-1-albedo
+surface-type-1-albedo
+0
+1
+0.36
+0.01
+1
+NIL
+HORIZONTAL
+
+SLIDER
+617
+509
+817
+542
+surface-type-2-albedo
+surface-type-2-albedo
+0
+1
+0.18
+0.01
+1
+NIL
+HORIZONTAL
+
+SLIDER
+619
+560
+819
+593
+surface-type-3-albedo
+surface-type-3-albedo
+0
+1
+0.72
+0.01
+1
+NIL
+HORIZONTAL
+
+SLIDER
+624
+609
+824
+642
+surface-type-4-albedo
+surface-type-4-albedo
+0
+1
+0.35
+0.01
+1
+NIL
+HORIZONTAL
+
+CHOOSER
+822
+461
+960
+506
+surface-type-1
+surface-type-1
+"forest" "concert" "sand" "ice/water"
+0
+
+CHOOSER
+823
+512
+961
+557
+surface-type-2
+surface-type-2
+"forest" "concert" "sand" "ice/water"
+1
+
+CHOOSER
+824
+561
+962
+606
+surface-type-3
+surface-type-3
+"forest" "concert" "sand" "ice/water"
+2
+
+CHOOSER
+825
+610
+963
+655
+surface-type-4
+surface-type-4
+"forest" "concert" "sand" "ice/water"
+3
+
+SWITCH
+625
+678
+758
+711
+melting-ice?
+melting-ice?
+0
+1
+-1000
+
+SLIDER
+965
+466
+1137
+499
+surface-area-1
+surface-area-1
+0
+100
+64.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+965
+515
+1137
+548
+surface-area-2
+surface-area-2
+0
+100
+18.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+967
+565
+1139
+598
+surface-area-3
+surface-area-3
+0
+100
+53.0
+1
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -651,6 +1087,26 @@ Circle -16777216 true false 60 75 60
 Circle -16777216 true false 180 75 60
 Polygon -16777216 true false 150 168 90 184 62 210 47 232 67 244 90 220 109 205 150 198 192 205 210 220 227 242 251 229 236 206 212 183
 
+factory
+false
+0
+Rectangle -7500403 true true 76 194 285 270
+Rectangle -7500403 true true 36 95 59 231
+Rectangle -16777216 true false 90 210 270 240
+Line -7500403 true 90 195 90 255
+Line -7500403 true 120 195 120 255
+Line -7500403 true 150 195 150 240
+Line -7500403 true 180 195 180 255
+Line -7500403 true 210 210 210 240
+Line -7500403 true 240 210 240 240
+Line -7500403 true 90 225 270 225
+Circle -1 true false 37 73 32
+Circle -1 true false 55 38 54
+Circle -1 true false 96 21 42
+Circle -1 true false 105 40 32
+Circle -1 true false 129 19 42
+Rectangle -7500403 true true 14 228 78 270
+
 fish
 false
 0
@@ -693,6 +1149,27 @@ Rectangle -16777216 true false 120 210 180 285
 Polygon -7500403 true true 15 120 150 15 285 120
 Line -16777216 false 30 120 270 120
 
+house two story
+false
+0
+Polygon -7500403 true true 2 180 227 180 152 150 32 150
+Rectangle -7500403 true true 270 75 285 255
+Rectangle -7500403 true true 75 135 270 255
+Rectangle -16777216 true false 124 195 187 256
+Rectangle -16777216 true false 210 195 255 240
+Rectangle -16777216 true false 90 150 135 180
+Rectangle -16777216 true false 210 150 255 180
+Line -16777216 false 270 135 270 255
+Rectangle -7500403 true true 15 180 75 255
+Polygon -7500403 true true 60 135 285 135 240 90 105 90
+Line -16777216 false 75 135 75 180
+Rectangle -16777216 true false 30 195 93 240
+Line -16777216 false 60 135 285 135
+Line -16777216 false 255 105 285 135
+Line -16777216 false 0 180 75 180
+Line -7500403 true 60 195 60 240
+Line -7500403 true 154 195 154 255
+
 leaf
 false
 0
@@ -708,6 +1185,14 @@ line half
 true
 0
 Line -7500403 true 150 0 150 150
+
+molecule hydrogen
+true
+0
+Circle -1 true false 138 108 84
+Circle -16777216 false false 138 108 84
+Circle -1 true false 78 108 84
+Circle -16777216 false false 78 108 84
 
 molecule water
 true
@@ -772,6 +1257,19 @@ false
 0
 Polygon -7500403 true true 151 1 185 108 298 108 207 175 242 282 151 216 59 282 94 175 3 108 116 108
 
+sun
+false
+0
+Circle -7500403 true true 75 75 150
+Polygon -7500403 true true 300 150 240 120 240 180
+Polygon -7500403 true true 150 0 120 60 180 60
+Polygon -7500403 true true 150 300 120 240 180 240
+Polygon -7500403 true true 0 150 60 120 60 180
+Polygon -7500403 true true 60 195 105 240 45 255
+Polygon -7500403 true true 60 105 105 60 45 45
+Polygon -7500403 true true 195 60 240 105 255 45
+Polygon -7500403 true true 240 195 195 240 255 255
+
 target
 false
 0
@@ -790,6 +1288,14 @@ Circle -7500403 true true 65 21 108
 Circle -7500403 true true 116 41 127
 Circle -7500403 true true 45 90 120
 Circle -7500403 true true 104 74 152
+
+tree pine
+false
+0
+Rectangle -6459832 true false 120 225 180 300
+Polygon -7500403 true true 150 240 240 270 150 135 60 270
+Polygon -7500403 true true 150 75 75 210 150 195 225 210
+Polygon -7500403 true true 150 7 90 157 150 142 210 157 150 7
 
 triangle
 false
